@@ -5,6 +5,7 @@ import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.MatOfFloat6
 import org.opencv.core.MatOfInt
 import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
@@ -109,7 +110,7 @@ object FaceSwapEngine {
             subdiv.insert(clamped)
         }
 
-        val triangleList = MatOfPoint2f()
+        val triangleList = MatOfFloat6()
         subdiv.getTriangleList(triangleList)
 
         // Each row of triangleList is a flat (x1,y1,x2,y2,x3,y3) triangle.

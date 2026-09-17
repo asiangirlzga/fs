@@ -20,6 +20,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.faceswap.bulk.BulkSwapViewModel
 import com.faceswap.bulk.SwapStatus
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BulkSwapScreen(viewModel: BulkSwapViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsState()
