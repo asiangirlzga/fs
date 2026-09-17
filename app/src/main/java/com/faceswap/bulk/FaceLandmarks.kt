@@ -49,7 +49,11 @@ class FaceLandmarkDetector {
      */
     fun detectSingleFace(bitmap: Bitmap): DetectedFace? {
         val image = InputImage.fromBitmap(bitmap, 0)
-        val faces: List<Face> = Tasks.await(detector.process(image))
+        val faces: List<Face> = try {
+            Tasks.await(detector.process(image))
+        } catch (t: Throwable) {
+            return null
+        }
         val face = faces.singleOrNull() ?: return null
         return toDetectedFace(face)
     }

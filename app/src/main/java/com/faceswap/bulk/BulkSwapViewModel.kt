@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.OutputStream
 
 enum class SwapStatus { PENDING, RUNNING, DONE, NO_FACE_FOUND, FAILED }
@@ -65,38 +66,52 @@ class BulkSwapViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _uiState.update { it.copy(isProcessing = true, completedCount = 0, errorMessage = null) }
 
-            val sourceBitmap = withContext(Dispatchers.IO) { loadBitmap(sourceUri) }
-            val sourceFace = withContext(Dispatchers.Default) {
-                sourceBitmap?.let { detector.detectSingleFace(it) }
-            }
-            if (sourceBitmap == null || sourceFace == null) {
-                _uiState.update {
-                    it.copy(
-                        isProcessing = false,
-                        errorMessage = "No single clear face detected in the source photo."
-                    )
-                }
-                return@launch
-            }
-
-            val targets = _uiState.value.targets
-            for ((index, item) in targets.withIndex()) {
-                markStatus(index, SwapStatus.RUNNING)
-                val result = withContext(Dispatchers.Default) {
-                    processOne(sourceBitmap, sourceFace, item.uri)
-                }
-                when (result) {
-                    is OneResult.Success -> {
-                        val savedUri = withContext(Dispatchers.IO) { saveToGallery(result.bitmap) }
-                        updateTarget(index, SwapStatus.DONE, savedUri)
+            try {
+                val sourceBitmap = withContext(Dispatchers.IO) { loadBitmap(sourceUri) }
+                if (sourceBitmap == null) {
+                    _uiState.update {
+                        it.copy(isProcessing = false, errorMessage = "Couldn't load the source photo.")
                     }
-                    OneResult.NoFace -> updateTarget(index, SwapStatus.NO_FACE_FOUND, null)
-                    OneResult.Error -> updateTarget(index, SwapStatus.FAILED, null)
+                    return@launch
                 }
-                _uiState.update { it.copy(completedCount = index + 1) }
-            }
 
-            _uiState.update { it.copy(isProcessing = false) }
+                val sourceFace = withContext(Dispatchers.Default) {
+                    withTimeoutOrNull(20_000) { detector.detectSingleFace(sourceBitmap) }
+                }
+                if (sourceFace == null) {
+                    _uiState.update {
+                        it.copy(
+                            isProcessing = false,
+                            errorMessage = "Couldn't find a single clear face in the source photo " +
+                                "(or face detection timed out — check the device has Google Play " +
+                                "Services installed and up to date)."
+                        )
+                    }
+                    return@launch
+                }
+
+                val targets = _uiState.value.targets
+                for ((index, item) in targets.withIndex()) {
+                    markStatus(index, SwapStatus.RUNNING)
+                    val result = withContext(Dispatchers.Default) {
+                        withTimeoutOrNull(20_000) { processOne(sourceBitmap, sourceFace, item.uri) }
+                            ?: OneResult.Error
+                    }
+                    when (result) {
+                        is OneResult.Success -> {
+                            val savedUri = withContext(Dispatchers.IO) { saveToGallery(result.bitmap) }
+                            updateTarget(index, SwapStatus.DONE, savedUri)
+                        }
+                        OneResult.NoFace -> updateTarget(index, SwapStatus.NO_FACE_FOUND, null)
+                        OneResult.Error -> updateTarget(index, SwapStatus.FAILED, null)
+                    }
+                    _uiState.update { it.copy(completedCount = index + 1) }
+                }
+            } catch (t: Throwable) {
+                _uiState.update { it.copy(errorMessage = "Unexpected error: ${t.message ?: t::class.simpleName}") }
+            } finally {
+                _uiState.update { it.copy(isProcessing = false) }
+            }
         }
     }
 
