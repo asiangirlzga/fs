@@ -25,6 +25,7 @@ data class TargetItem(
     val uri: Uri,
     val status: SwapStatus = SwapStatus.PENDING,
     val resultUri: Uri? = null,
+    val failReason: String? = null,
 )
 
 data class BulkSwapUiState(
@@ -95,15 +96,15 @@ class BulkSwapViewModel(app: Application) : AndroidViewModel(app) {
                     markStatus(index, SwapStatus.RUNNING)
                     val result = withContext(Dispatchers.Default) {
                         withTimeoutOrNull(20_000) { processOne(sourceBitmap, sourceFace, item.uri) }
-                            ?: OneResult.Error
+                            ?: OneResult.Error("timed out")
                     }
                     when (result) {
                         is OneResult.Success -> {
                             val savedUri = withContext(Dispatchers.IO) { saveToGallery(result.bitmap) }
-                            updateTarget(index, SwapStatus.DONE, savedUri)
+                            updateTarget(index, SwapStatus.DONE, savedUri, null)
                         }
-                        OneResult.NoFace -> updateTarget(index, SwapStatus.NO_FACE_FOUND, null)
-                        OneResult.Error -> updateTarget(index, SwapStatus.FAILED, null)
+                        OneResult.NoFace -> updateTarget(index, SwapStatus.NO_FACE_FOUND, null, null)
+                        is OneResult.Error -> updateTarget(index, SwapStatus.FAILED, null, result.reason)
                     }
                     _uiState.update { it.copy(completedCount = index + 1) }
                 }
@@ -118,18 +119,19 @@ class BulkSwapViewModel(app: Application) : AndroidViewModel(app) {
     private sealed class OneResult {
         data class Success(val bitmap: Bitmap) : OneResult()
         object NoFace : OneResult()
-        object Error : OneResult()
+        data class Error(val reason: String) : OneResult()
     }
 
     private fun processOne(sourceBitmap: Bitmap, sourceFace: DetectedFace, targetUri: Uri): OneResult {
         return try {
-            val targetBitmap = loadBitmap(targetUri) ?: return OneResult.Error
+            val targetBitmap = loadBitmap(targetUri) ?: return OneResult.Error("couldn't load photo")
             val targetFace = detector.detectSingleFace(targetBitmap) ?: return OneResult.NoFace
             val result = FaceSwapEngine.swap(sourceBitmap, sourceFace, targetBitmap, targetFace)
-                ?: return OneResult.Error
+                ?: return OneResult.Error("swap engine returned no result")
             OneResult.Success(result)
         } catch (t: Throwable) {
-            OneResult.Error
+            android.util.Log.e("BulkFaceSwap", "swap failed for $targetUri", t)
+            OneResult.Error(t.message ?: t::class.simpleName ?: "unknown error")
         }
     }
 
@@ -141,10 +143,10 @@ class BulkSwapViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun updateTarget(index: Int, status: SwapStatus, resultUri: Uri?) {
+    private fun updateTarget(index: Int, status: SwapStatus, resultUri: Uri?, failReason: String?) {
         _uiState.update { state ->
             val list = state.targets.toMutableList()
-            list[index] = list[index].copy(status = status, resultUri = resultUri)
+            list[index] = list[index].copy(status = status, resultUri = resultUri, failReason = failReason)
             state.copy(targets = list)
         }
     }

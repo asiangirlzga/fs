@@ -102,7 +102,8 @@ fun BulkSwapScreen(viewModel: BulkSwapViewModel = viewModel()) {
                                 modifier = Modifier.size(48.dp)
                             )
                         },
-                        headlineContent = { Text(statusLabel(target.status)) }
+                        headlineContent = { Text(statusLabel(target.status)) },
+                        supportingContent = target.failReason?.let { reason -> { Text(reason) } }
                     )
                 }
             }
