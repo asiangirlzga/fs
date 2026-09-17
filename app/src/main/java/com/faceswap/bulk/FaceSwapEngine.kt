@@ -117,12 +117,12 @@ object FaceSwapEngine {
         // Map each vertex back to the closest hull point index.
         val result = ArrayList<IntArray>()
         val rows = triangleList.rows()
-        val arr = DoubleArray(6)
+        val arr = FloatArray(6)
         for (i in 0 until rows) {
             triangleList.get(i, 0, arr)
-            val v0 = Point(arr[0], arr[1])
-            val v1 = Point(arr[2], arr[3])
-            val v2 = Point(arr[4], arr[5])
+            val v0 = Point(arr[0].toDouble(), arr[1].toDouble())
+            val v1 = Point(arr[2].toDouble(), arr[3].toDouble())
+            val v2 = Point(arr[4].toDouble(), arr[5].toDouble())
             if (!inRect(rect, v0) || !inRect(rect, v1) || !inRect(rect, v2)) continue
             val i0 = closestIndex(hullPoints, v0)
             val i1 = closestIndex(hullPoints, v1)
